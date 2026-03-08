@@ -2,169 +2,164 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>地震情報シミュレーター</title>
+    <title>地震情報 - Kactuif System</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background: #333; }
-        #map { height: 100vh; width: 100%; z-index: 1; }
+        /* フォント設定: A-OTF UD新ゴ Pr6N を最優先 */
+        body {
+            margin: 0; padding: 0; overflow: hidden;
+            font-family: "A-OTF UD新ゴ Pr6N", "UD Shin Go Pr6N", "M+ 2p", sans-serif;
+            background: #000;
+        }
+
+        #map { height: 100vh; width: 100%; z-index: 1; filter: brightness(0.8) contrast(1.2); }
 
         /* 左側情報パネル */
-        .info-panel {
-            position: absolute;
-            top: 0; left: 0;
-            width: 280px;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            color: white;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            padding: 0;
-            box-sizing: border-box;
+        .side-panel {
+            position: absolute; top: 0; left: 0; width: 320px; height: 100%;
+            background: rgba(20, 20, 20, 0.9); color: white; z-index: 1000;
+            display: flex; flex-direction: column; border-right: 2px solid #444;
         }
 
-        .header { background: #0055ff; padding: 10px; font-weight: bold; }
-        .header .sub { font-size: 12px; }
-        .header .main { font-size: 32px; letter-spacing: 2px; }
+        .header { background: #0055ff; padding: 15px; }
+        .header-en { font-size: 14px; opacity: 0.8; }
+        .header-jp { font-size: 36px; font-weight: 900; letter-spacing: 1px; }
 
-        .content { padding: 15px; flex-grow: 1; }
-        .label { background: #fff; color: #000; display: inline-block; padding: 2px 8px; font-size: 14px; font-weight: bold; margin-bottom: 5px; }
-        .value { font-size: 22px; margin-bottom: 20px; font-weight: bold; }
-
-        /* 最大震度表示 */
-        .max-int-box {
-            border: 2px solid #fff;
-            padding: 10px;
-            text-align: center;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 15px;
+        .info-content { padding: 20px; flex-grow: 1; }
+        
+        /* 最大震度ボックス */
+        .max-shindo-container {
+            border: 2px solid #fff; margin-bottom: 25px; display: flex; align-items: center;
         }
-        .max-int-label { font-size: 18px; }
-        #max-int-value { font-size: 48px; font-weight: bold; }
+        .shindo-label { background: #fff; color: #000; padding: 10px; font-weight: bold; font-size: 20px; }
+        .shindo-value { flex-grow: 1; text-align: center; font-size: 64px; font-weight: 900; }
 
-        /* 下部テロップエリア */
-        .bottom-info { position: absolute; bottom: 0; left: 0; width: 100%; z-index: 1001; }
-        #tsunami-status {
-            background: #800080; color: white; padding: 10px 20px; font-size: 20px; font-weight: bold; width: fit-content; min-width: 300px;
-        }
-        #eew-status {
-            background: #ff0; color: #000; padding: 10px 20px; font-size: 18px; font-weight: bold; width: fit-content; min-width: 300px; display: none;
-        }
+        .item-label { background: #eee; color: #333; display: inline-block; padding: 2px 10px; font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+        .item-value { font-size: 24px; font-weight: bold; margin-bottom: 20px; line-height: 1.4; }
 
-        /* 震度別の色定義 */
-        .int-7 { color: #ffff00; background-color: #780000 !important; }
-        .int-6plus { color: #ffffff; background-color: #d90429 !important; }
-        .int-6minus { color: #ffffff; background-color: #ef233c !important; }
-        .int-5plus { color: #ffffff; background-color: #f77f00 !important; }
-        .int-5minus { color: #ffffff; background-color: #fcbf49 !important; }
+        /* 下部ステータス */
+        .bottom-status { position: absolute; bottom: 40px; left: 340px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; }
+        
+        .status-box { padding: 12px 25px; font-size: 28px; font-weight: 900; color: white; box-shadow: 4px 4px 10px rgba(0,0,0,0.5); }
+        #tsunami-box { background: #0055ff; } /* デフォルト */
+        #eew-box { background: #ffea00; color: #000; display: none; }
+
+        /* 震度別カラー (NHK/気象庁準拠イメージ) */
+        .shindo-7  { background-color: #780000 !important; color: #fff; }
+        .shindo-6plus  { background-color: #d90429 !important; }
+        .shindo-6minus { background-color: #ef233c !important; }
+        .shindo-5plus  { background-color: #f77f00 !important; }
+        .shindo-5minus { background-color: #fcbf49 !important; color: #000; }
     </style>
 </head>
 <body>
 
-<div class="info-panel">
+<div class="side-panel">
     <div class="header">
-        <div class="sub">Earthquake Information</div>
-        <div class="main">地震情報</div>
+        <div class="header-en">Earthquake Information</div>
+        <div class="header-jp">地震情報</div>
     </div>
-    <div class="content">
-        <div id="intensity-container" class="max-int-box">
-            <span class="max-int-label">最大震度</span>
-            <span id="max-int-value">--</span>
+    <div class="info-content">
+        <div class="max-shindo-container" id="shindo-bg">
+            <div class="shindo-label">最大震度</div>
+            <div class="shindo-value" id="shindo-txt">X</div>
         </div>
 
-        <div class="label">発生日時</div>
-        <div id="date-time" class="value">----年--月--日<br>--時--分ごろ</div>
+        <div class="item-label">発生日時</div>
+        <div class="item-value" id="time-txt">2026年XX月XX日<br>XX時XX分ごろ</div>
 
-        <div class="label">震源地</div>
-        <div id="location" class="value">----</div>
+        <div class="item-label">震源地</div>
+        <div class="item-value" id="loc-txt">震源地名</div>
 
-        <div class="label">地震の規模</div>
-        <div id="magnitude" class="value">M-.--</div>
+        <div class="item-label">地震の規模</div>
+        <div class="item-value" id="mag-txt">M0.0</div>
 
-        <div class="label">地震の深さ</div>
-        <div id="depth" class="value">約 -- km</div>
+        <div class="item-label">地震の深さ</div>
+        <div class="item-value" id="dep-txt">約XXキロ</div>
     </div>
 </div>
 
-<div class="bottom-info">
-    <div id="tsunami-status">津波の心配なし</div>
-    <div id="eew-status">緊急地震速報が発表されています</div>
+<div class="bottom-status">
+    <div id="tsunami-box" class="status-box">津波の心配なし</div>
+    <div id="eew-box" class="status-box">緊急地震速報が発表されています</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([36.5, 138.0], 6);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    // 地図初期化
+    const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([35.0, 138.0], 7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png').addTo(map);
 
-    async function updateEarthquakeInfo() {
+    async function fetchEQ() {
         try {
-            const response = await fetch('https://api.wolfx.jp/jma_eqlist.json');
-            const data = await response.json();
-            const latest = data[0]; // 最新の地震情報を取得
+            const res = await fetch('https://api.wolfx.jp/jma_eqlist.json');
+            const data = await res.json();
+            const eq = data[0]; // 最新の1件を取得
 
-            // 1. 各項目の書き換え
-            document.getElementById('max-int-value').innerText = latest.max_int;
-            document.getElementById('date-time').innerHTML = latest.dt.replace(' ', '<br>');
-            document.getElementById('location').innerText = latest.location;
-            document.getElementById('magnitude').innerText = 'M' + latest.mag;
-            document.getElementById('depth').innerText = '約 ' + latest.depth + ' km';
+            // 基本情報反映
+            document.getElementById('shindo-txt').innerText = eq.shindo;
+            document.getElementById('time-txt').innerHTML = eq.time.replace(' ', '<br>');
+            document.getElementById('loc-txt').innerText = eq.location;
+            document.getElementById('mag-txt').innerText = 'M' + eq.magnitude;
+            document.getElementById('dep-txt').innerText = '約' + eq.depth;
 
-            // 2. 最大震度の色設定
-            const intBox = document.getElementById('intensity-container');
-            intBox.className = 'max-int-box'; // リセット
-            if (latest.max_int === '7') intBox.classList.add('int-7');
-            else if (latest.max_int === '6+') intBox.classList.add('int-6plus');
-            else if (latest.max_int === '6-') intBox.classList.add('int-6minus');
-            else if (latest.max_int === '5+') intBox.classList.add('int-5plus');
-            else if (latest.max_int === '5-') intBox.classList.add('int-5minus');
+            // 震度カラー適用
+            const bg = document.getElementById('shindo-bg');
+            bg.className = 'max-shindo-container';
+            if(eq.shindo === '7') bg.classList.add('shindo-7');
+            if(eq.shindo === '6+') bg.classList.add('shindo-6plus');
+            if(eq.shindo === '6-') bg.classList.add('shindo-6minus');
+            if(eq.shindo === '5+') bg.classList.add('shindo-5plus');
+            if(eq.shindo === '5-') bg.classList.add('shindo-5minus');
 
-            // 3. 津波情報の判定
-            const tsunamiText = document.getElementById('tsunami-status');
-            if (latest.tsunami === "MajorWarning") {
-                tsunamiText.innerText = "大津波警報・津波警報 発令中";
-                tsunamiText.style.background = "#800080";
-            } else if (latest.tsunami === "Warning") {
-                tsunamiText.innerText = "津波警報 発令中";
-                tsunamiText.style.background = "#ff0000";
-            } else if (latest.tsunami === "Advisory") {
-                tsunamiText.innerText = "津波注意報 発令中";
-                tsunamiText.style.background = "#ffff00";
-                tsunamiText.style.color = "#000";
-            } else if (latest.tsunami === "Forecast") {
-                tsunamiText.innerText = "津波被害の心配なし";
-                tsunamiText.style.background = "#0055ff";
+            // 津波情報判定
+            const tsBox = document.getElementById('tsunami-box');
+            const tsInfo = eq.info || "";
+            if (tsInfo.includes("大津波警報")) {
+                tsBox.innerText = "大津波警報・津波警報 発令中";
+                tsBox.style.background = "#aa00aa";
+            } else if (tsInfo.includes("津波警報")) {
+                tsBox.innerText = "津波警報 発令中";
+                tsBox.style.background = "#ff0000";
+            } else if (tsInfo.includes("津波注意報")) {
+                tsBox.innerText = "津波注意報 発令中";
+                tsBox.style.background = "#fff100";
+                tsBox.style.color = "#000";
+            } else if (tsInfo.includes("津波被害の心配なし") || tsInfo.includes("若干の海面変動")) {
+                tsBox.innerText = "津波被害の心配なし";
+                tsBox.style.background = "#0055ff";
+                tsBox.style.color = "#fff";
             } else {
-                tsunamiText.innerText = "津波の心配なし";
-                tsunamiText.style.background = "#0055ff";
+                tsBox.innerText = "津波の心配なし";
+                tsBox.style.background = "#0055ff";
+                tsBox.style.color = "#fff";
             }
 
-            // 4. 緊急地震速報の表示/非表示
-            // APIの仕様に基づき、緊急地震速報のフラグ(例: is_eew)がある場合に表示
-            const eewBox = document.getElementById('eew-status');
-            if (latest.is_eew) { // APIに当該フラグがある場合。ない場合は震度5弱以上などで判定も可能
+            // 緊急地震速報 (EEW) 判定
+            const eewBox = document.getElementById('eew-box');
+            if (eq.Title && eq.Title.includes("緊急地震速報")) {
                 eewBox.style.display = 'block';
             } else {
                 eewBox.style.display = 'none';
             }
 
-            // 5. 地図に震源地マークを表示
-            L.marker([latest.latitude, latest.longitude]).addTo(map)
-                .bindPopup(latest.location).openPopup();
-            map.panTo([latest.latitude, latest.longitude]);
+            // 震源地マーク表示
+            map.eachLayer((layer) => { if (layer instanceof L.Marker) map.removeLayer(layer); });
+            const iconX = L.divIcon({
+                className: 'custom-div-icon',
+                html: "<div style='color:red; font-size:40px; font-weight:bold; transform:translate(-10px,-25px)'>×</div>",
+                iconSize: [30, 42], iconAnchor: [15, 42]
+            });
+            L.marker([eq.latitude, eq.longitude], {icon: iconX}).addTo(map);
+            map.panTo([eq.latitude, eq.longitude]);
 
-        } catch (error) {
-            console.error('データ取得エラー:', error);
-        }
+        } catch (e) { console.error("Update error:", e); }
     }
 
-    updateEarthquakeInfo();
-    setInterval(updateEarthquakeInfo, 30000); // 30秒ごとに更新
+    fetchEQ();
+    setInterval(fetchEQ, 10000); // 10秒おきにチェック
 </script>
 </body>
 </html>
